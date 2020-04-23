@@ -32,7 +32,7 @@ class CoordinateTool(object):
                 return
 
     def _mouse_callback(self, event, x, y, flags, param):
-        w, h, _ = self._image.shape
+        h, w, _ = self._image.shape
         if event == cv2.EVENT_LBUTTONDOWN:
             for coordinate in self._coordinates:
                 if abs(x - coordinate.x * w) <= 4 and (abs(y - coordinate.y * h)) <= 4:
@@ -56,7 +56,7 @@ class CoordinateTool(object):
     def _draw_image(self):
         image = cv2.imread(self._current_image_path, cv2.IMREAD_COLOR)
         self._image = cv2.resize(image, (1600, 1200))
-        w, h, _ = self._image.shape
+        h, w, _ = self._image.shape
         for coordinate in self._coordinates:
             cv2.circle(self._image, (int(coordinate.x * w), int(coordinate.y * h)), 3, (0, 0, 255),
                        thickness=cv2.FILLED)
@@ -72,3 +72,12 @@ class Coordinate:
 if __name__ == '__main__':
     files = ['resources/board1.jpg', 'resources/board2.jpg']
     CoordinateTool(files, 'resources').start()
+
+
+    # import numpy as np
+    # with open('resources/board1.json', 'r') as file:
+    #     coords = np.asarray(json.load(file)['coordinates'])
+    #     coords[:, 0] *= 3/4
+    #     coords[:, 1] *= 4/3
+    # with open('resources/board1.json', 'w') as file:
+    #     json.dump({'coordinates': coords.tolist()}, file)
