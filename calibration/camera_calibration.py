@@ -5,6 +5,13 @@ import numpy as np
 
 from calibration.ideal_board import create_ideal_board
 
+def calculate_transformation_matrix(src_points, dest_points):
+    """
+
+    :return:
+    """
+    return cv2.getPerspectiveTransform(src_points.astype(np.float32), dest_points.astype(np.float32))
+
 if __name__ == '__main__':
     with open('resources/board1.json') as file:
         coordinates = np.asarray(json.load(file)['coordinates'])
