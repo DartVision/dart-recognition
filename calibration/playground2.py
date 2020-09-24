@@ -4,14 +4,16 @@ import numpy as np
 from itertools import combinations
 from matplotlib import colors
 from sklearn.cluster import DBSCAN
+from collections import Counter
 
 
 def f(image):
     pass
     lines = detect_lines(image)
     center = calculate_center(lines)
-    for inters in center:
-        cv2.circle(image, tuple((np.asarray(inters) * (image.shape[:2][::-1])).astype(np.int)), 3, (0, 255, 0), thickness=3)
+    # for inters in center:
+    #     cv2.circle(image, tuple((np.asarray(inters) * (image.shape[:2][::-1])).astype(np.int)), 10, (0, 255, 0), thickness=15)
+    cv2.circle(image, tuple((np.asarray(center) * (image.shape[:2][::-1])).astype(np.int)), 10, (0, 255, 0), thickness=10)
     image = cv2.resize(image, (960, 720))
     cv2.imshow('as', image)
     cv2.waitKey(0)
@@ -58,7 +60,9 @@ def calculate_intersections(lines):
         else:
             y = (rho1 * np.cos(theta2) - rho2 * np.cos(theta1)) / denominator
             x = (rho1 - y * np.sin(theta1)) / np.cos(theta1)
-            intersections.append((x, y))
+            # remove intersections outside of the image
+            if 0 <=x < 1 and 0 <=y < 1:
+                intersections.append((x, y))
 
     return intersections
 
@@ -71,10 +75,12 @@ def calculate_center(lines):
     # return calculate_closest_point(lines_closest_to_estimate)
 
     # option 2:
-    intersections = calculate_intersections(lines)
-    return intersections
-    # clusters = DBSCAN(eps=10, min_samples=3).fit(intersections)
-    # return clusters
+    intersections = np.asarray(calculate_intersections(lines))
+    clusters = DBSCAN(eps=0.01, min_samples=3).fit(intersections)
+    occurrence_count = Counter(clusters.labels_)
+    a, b = occurrence_count.most_common(2)[:][0]
+    largest_cluster_index = a if a >= 0 else b
+    return np.average(intersections[clusters.labels_ == largest_cluster_index], axis=0)
     # return np.average(filtered_intersections, axis=0)
 
 
