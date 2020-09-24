@@ -46,32 +46,40 @@ if __name__ == '__main__':
     # image = cv2.cvtColor(image, cv2.COLOR_YUV2BGR)
 
     image = cv2.resize(image, (960, 720))
-    image = cv2.blur(image, (3, 3))
-    # image = reduce_color_depth(image, 2)
+    # image = cv2.blur(image, (3, 3))
+    image = reduce_color_depth(image, 2)
     # cv2.imshow('as', image)
     # cv2.waitKey(0)
 
     # compute masks and calculate intersections
-    # red_mask = extract_mask(image, (63, 63, 191))
-    # green_mask = extract_mask(image, (63, 191, 63))
-    # white_mask = extract_mask(image, (191, 191, 191))
-    # black_mask = extract_mask(image, (63, 63, 63))
-    # red_mask = mask_to_image(red_mask)
-    # green_mask = mask_to_image(green_mask)
-    # white_mask = mask_to_image(white_mask)
-    # black_mask = mask_to_image(black_mask)
-    # red_mask = process_mask(red_mask)
-    # green_mask = process_mask(green_mask)
-    # white_mask = process_mask(white_mask)
-    # black_mask = process_mask(black_mask)
-    # edges_gr = cv2.bitwise_and(red_mask, green_mask)
-    # edges_bw = cv2.bitwise_and(white_mask, black_mask)
-    # edges = cv2.bitwise_and(edges_bw, edges_gr)
-    #
-    # result = edges
-    #
-    # green_mask = cv2.resize(green_mask, (1920, 1080))
-    # cv2.imshow('asdf', green_mask)
+    red_mask = extract_mask(image, (63, 63, 191))
+    green_mask = extract_mask(image, (63, 191, 63))
+    white_mask = extract_mask(image, (191, 191, 191))
+    black_mask = extract_mask(image, (63, 63, 63))
+    red_mask = mask_to_image(red_mask)
+    green_mask = mask_to_image(green_mask)
+    white_mask = mask_to_image(white_mask)
+    black_mask = mask_to_image(black_mask)
+    red_mask = process_mask(red_mask)
+    green_mask = process_mask(green_mask)
+    white_mask = process_mask(white_mask)
+    black_mask = process_mask(black_mask)
+    edges_gr = cv2.bitwise_and(red_mask, green_mask)
+    edges_bw = cv2.bitwise_and(white_mask, black_mask)
+    corners = cv2.bitwise_and(edges_bw, edges_gr)
+
+    # corners = cv2.cornerHarris(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), 2, 11, 0.02)
+    # dst_norm = np.empty(corners.shape, dtype=np.float32)
+    # cv2.normalize(corners, dst_norm, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+    # dst_norm_scaled = cv2.convertScaleAbs(dst_norm)
+    # for i in range(dst_norm.shape[0]):
+    #     for j in range(dst_norm.shape[1]):
+    #         if int(dst_norm[i, j]) > 127:
+    #             cv2.circle(image, (j, i), 5, (0, 255, 0), 2)
+
+    result = corners
+
+    # cv2.imshow('asdf', result)
     # cv2.waitKey(0)
 
     # result = mask_to_image(green_mask)
@@ -94,7 +102,7 @@ if __name__ == '__main__':
     edges = cv2.Canny(image, 50, 150, apertureSize=3)
     lines = cv2.HoughLines(edges, 1, np.pi / 180, 200)
 
-    result = edges
+    # result = edges
 
     for line in lines:
         rho, theta = line[0]
