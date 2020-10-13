@@ -2,6 +2,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import colors
+from scipy.ndimage import label
 
 
 def reduce_color_depth(image, n):
@@ -32,10 +33,20 @@ def process_mask(mask):
     return mask
 
 
-def fit_ideal_board_to_detection(ideal_points, detected_points):
-    a, b, phi = 0, 0, 0
+def extract_overlaps(mask1, mask2):
+    """
+    Extracts the connected components of mask2 that overlap with mask1
+    :param mask1: 
+    :param mask2: 
+    :return: 
+    """
+    mask2 = np.copy(mask2)
+    labeled_image, num_labels = label(mask2 > 127)
 
-    return a, b, phi
+    for i in range(1, num_labels + 1):
+        if np.count_nonzero(cv2.bitwise_and(mask1, mask2, mask=np.asarray(labeled_image == i, dtype=np.uint8))) == 0:
+            mask2[labeled_image == i] = 0
+    return mask2
 
 
 if __name__ == '__main__':
@@ -64,9 +75,9 @@ if __name__ == '__main__':
     green_mask = process_mask(green_mask)
     white_mask = process_mask(white_mask)
     black_mask = process_mask(black_mask)
-    edges_gr = cv2.bitwise_and(red_mask, green_mask)
-    edges_bw = cv2.bitwise_and(white_mask, black_mask)
-    corners = cv2.bitwise_and(edges_bw, edges_gr)
+    edges_rb = cv2.bitwise_and(red_mask, black_mask)
+    edges_gw = cv2.bitwise_and(green_mask, white_mask)
+    corners = cv2.bitwise_or(edges_gw, edges_rb)
 
     # corners = cv2.cornerHarris(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), 2, 11, 0.02)
     # dst_norm = np.empty(corners.shape, dtype=np.float32)
@@ -77,10 +88,10 @@ if __name__ == '__main__':
     #         if int(dst_norm[i, j]) > 127:
     #             cv2.circle(image, (j, i), 5, (0, 255, 0), 2)
 
-    result = corners
+    result = extract_overlaps(edges_gw, edges_rb)
 
-    # cv2.imshow('asdf', result)
-    # cv2.waitKey(0)
+    cv2.imshow('asdf', result)
+    cv2.waitKey(0)
 
     # result = mask_to_image(green_mask)
     # pixel_colors = image.reshape((np.shape(image)[0] * np.shape(image)[1], 3))

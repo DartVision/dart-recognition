@@ -8,6 +8,22 @@ from collections import Counter
 from scipy.ndimage import label
 
 
+def extract_overlaps(mask1, mask2):
+    """
+    Extracts the connected components of mask2 that overlap with mask1
+    :param mask1:
+    :param mask2:
+    :return:
+    """
+    mask2 = np.copy(mask2)
+    labeled_image, num_labels = label(mask2 > 127)
+
+    for i in range(1, num_labels + 1):
+        if np.count_nonzero(cv2.bitwise_and(mask1, mask2, mask=np.asarray(labeled_image == i, dtype=np.uint8))) == 0:
+            mask2[labeled_image == i] = 0
+    return mask2
+
+
 def reduce_color_depth(image, n):
     """
     Reduces color depth to n values per channel
@@ -55,13 +71,54 @@ def discard_inner_ellipsoids(green_areas, center, lines):
 
     # turn lines clockwise a bit
     lines = np.copy(lines)
-    lines[:, 1] = (lines[:, 1] + np.pi / 20) % (2 * np.pi)
 
+    # lines = np.asarray([[0.6, 3*np.pi/8]])
+    lines = lines[:1]
+
+    lines = rotate_lines(lines, np.pi/8, center)
+
+    lines = convert_lines_to_absolute(green_areas, lines)
     # remove triple ring
+    for line in lines:
+        rho, theta = line
+        a = np.cos(theta)
+        b = np.sin(theta)
+        x0 = a * rho
+        y0 = b * rho
+        x1 = int(x0 + 10000 * (-b))
+        y1 = int(y0 + 10000 * (a))
+        x2 = int(x0 - 10000 * (-b))
+        y2 = int(y0 - 10000 * (a))
 
-
+        cv2.line(green_areas, (x1, y1), (x2, y2), 255, 2)
+    cv2.circle(green_areas, tuple((center * green_areas.shape[:2][::-1]).astype(np.int)), 5, 255, 5)
     cv2.imshow('title', green_areas)
     cv2.waitKey(0)
+
+
+def rotate_lines(lines, angle, center):
+    distances_before = calculate_point_line_distances(lines, center)
+    lines[:, 1] += angle
+    distances_after = calculate_point_line_distances(lines, center)
+    # FIX: Either add OR subtract missing distance!
+    lines[:, 0] += distances_after - distances_before
+    return lines
+
+
+def calculate_point_line_distances(lines, point):
+    rhos, thetas = lines[:, 0], lines[:, 1]
+    x = rhos * np.cos(thetas)
+    y = rhos * np.sin(thetas)
+
+    b = np.stack([-y, x], axis=-1)
+    c = np.tile(point[np.newaxis, :], reps=(lines.shape[0], 1)) - np.stack([x, y], axis=-1)
+
+    row_wise_scalar_product = np.sum(b * c, axis=-1)
+    norms = np.linalg.norm(b, axis=-1) * np.linalg.norm(c, axis=-1)
+    alphas = np.arccos(row_wise_scalar_product / norms)
+
+    distances = np.sin(alphas) * np.linalg.norm(c, axis=-1)
+    return distances
 
 
 def get_bulls_labels(center, green_areas, labeled_image):
@@ -72,7 +129,7 @@ def get_bulls_labels(center, green_areas, labeled_image):
     for i in range(int((cx - DIST) * w), int((cx + DIST) * w)):
         for j in range(int(cy * h - DIST * w), int(cy * h + DIST * w)):
             if np.linalg.norm([i - cx * w, j - cy * h]) < DIST * w and labeled_image[i, j] > 0:
-                    bulls_labels.append(labeled_image[j, i])
+                bulls_labels.append(labeled_image[j, i])
     return bulls_labels
 
 
@@ -96,18 +153,38 @@ def detect_lines(image):
 
     rhos = lines[:, 0, 0]
     thetas = lines[:, 0, 1]
+    lines = convert_lines_to_relative(image, rhos, thetas)
+    return lines
+
+
+def convert_lines_to_relative(image, rhos, thetas):
+    h, w = image.shape[:2]
+    lines = _scale_lines(h, w, rhos, thetas)
+    return lines
+
+
+def convert_lines_to_absolute(image, lines):
+    rhos = lines[:, 0]
+    thetas = lines[:, 1]
+
+    h, w = image.shape[:2]
+    h = 1 / h
+    w = 1 / w
+
+    lines = _scale_lines(h, w, rhos, thetas)
+    return lines
+
+
+def _scale_lines(h, w, rhos, thetas):
     x = rhos * np.cos(thetas)
     y = rhos * np.sin(thetas)
-    h, w = image.shape[:2]
-
     t = (x * y * (w * w - h * h)) / (y * y * h * h + x * x * w * w)
     F1 = x / w + t * y / w
     F2 = y / h - t * x / h
-
     rhos = np.linalg.norm([F1, F2], axis=0)
     thetas = np.arctan2(F2, F1)
-
-    return np.stack([rhos, thetas], axis=-1)
+    lines = np.stack([rhos, thetas], axis=-1)
+    return lines
 
 
 def calculate_intersections(lines):
