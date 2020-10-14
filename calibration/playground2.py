@@ -73,9 +73,9 @@ def discard_inner_ellipsoids(green_areas, center, lines):
     lines = np.copy(lines)
 
     # lines = np.asarray([[0.6, 3*np.pi/8]])
-    lines = lines[:1]
+    # lines = lines[:1]
 
-    lines = rotate_lines(lines, np.pi/8, center)
+    lines = rotate_lines(lines, np.pi / 20, center)
 
     lines = convert_lines_to_absolute(green_areas, lines)
     # remove triple ring
@@ -91,6 +91,11 @@ def discard_inner_ellipsoids(green_areas, center, lines):
         y2 = int(y0 - 10000 * (a))
 
         cv2.line(green_areas, (x1, y1), (x2, y2), 255, 2)
+
+    h, w = green_areas.shape[:2]
+    cv2.ellipse(img=green_areas, center=(int(0.496 * w), int(0.515 * h)), axes=(int(0.342 * w), int(0.185* h)), angle=0,
+                startAngle=0,
+                endAngle=360, color=255, thickness=3)
     cv2.circle(green_areas, tuple((center * green_areas.shape[:2][::-1]).astype(np.int)), 5, 255, 5)
     cv2.imshow('title', green_areas)
     cv2.waitKey(0)
@@ -117,7 +122,7 @@ def calculate_point_line_distances(lines, point):
     norms = np.linalg.norm(b, axis=-1) * np.linalg.norm(c, axis=-1)
     alphas = np.arccos(row_wise_scalar_product / norms)
 
-    distances = np.sin(alphas) * np.linalg.norm(c, axis=-1)
+    distances = np.sign(b[:, 1] * c[:, 0] - b[:, 0] * c[:, 1]) * np.sin(alphas) * np.linalg.norm(c, axis=-1)
     return distances
 
 
