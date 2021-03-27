@@ -34,9 +34,11 @@ def start_annotate_score(images_dir, json_dir, out_dir):
     If you want to quit the whole process, press q or simply close the window.
     :return:
     """
+    images_dir = path.expanduser(images_dir)
+    json_dir = path.expanduser(json_dir)
+    out_dir = path.expanduser(out_dir)
     window = 'window'
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
-    # annotate(window, img_path, [], 1)
     for json_filename in glob(path.join(json_dir, '*.json')):
         with open(json_filename, 'rb') as json_file:
             old_json = json.load(json_file)
@@ -50,7 +52,7 @@ def start_annotate_score(images_dir, json_dir, out_dir):
                 continue
             elif res == AnnotationResult.SUCCESSFUL:
                 old_json["shapes"][i]["score"] = score
-                out_path = path.join(out_dir, json_filename)
+                out_path = path.join(out_dir, path.basename(json_filename))
                 with open(out_path, 'w', encoding='utf8') as out_file:
                     json.dump(old_json, out_file, indent=2)
 
