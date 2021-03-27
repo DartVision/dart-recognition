@@ -4,11 +4,12 @@ import tensorflow as tf
 import numpy as np
 
 
-def hungarian_matching(predictions, ground_truths, cost_pred=1, cost_loc=1):
+def hungarian_matching(predictions, ground_truths, cost_pred=1, cost_loc=1, cost_field=0.1):
     """
     Computes the optimal matching between predictions and ground truths like in "End-to-End Object Detection
     with Transformers"
     Assumes len(predictions) == len(ground_truths)
+    :param cost_field:
     :param cost_pred:
     :param cost_loc:
     :param predictions:
@@ -21,18 +22,20 @@ def hungarian_matching(predictions, ground_truths, cost_pred=1, cost_loc=1):
         gt = ground_truths[i]
         pred_detect = tf.nn.softmax(p[:, :2], axis=-1).numpy()
         # ground truth labels
-        target_labels = gt[:, 0].numpy().astype(np.int)
+        target_object_labels = gt[:, 0].numpy().astype(np.int)
 
-        pred_field = tf.nn.softmax(p[:, ])
+        target_field_labels = gt[:, 3].numpy().astype(np.int)
+        pred_field = tf.nn.softmax(p[:, 4:8], axis=-1).numpy()
 
         # from now on we work in numpy
         # Detection costs.
         # 1 - prob_gt. 1 is omitted.
-        pred_matrix = -pred_detect[:, target_labels]
+        field_matrix = -pred_field[:, target_field_labels]
+        pred_matrix = -pred_detect[:, target_object_labels]
         l2_distances = cdist(p[:, 2:4].numpy(), gt[:, 1:3].numpy(), metric='euclidean')
 
-        total_cost_matrix = cost_loc * l2_distances + cost_pred * pred_matrix
-        total_cost_matrix[:, target_labels == 0] = 0
+        total_cost_matrix = cost_loc * l2_distances + cost_pred * pred_matrix + cost_field * field_matrix
+        total_cost_matrix[:, target_object_labels == 0] = 0
         _, col_indices = linear_sum_assignment(total_cost_matrix)
         all_indices.append(col_indices)
 
@@ -107,13 +110,16 @@ def hungarian_loss(predictions, ground_truths, mu=1, rho=1):
     detection_loss = loss_detect(predictions, ground_truths)
     location_loss = loss_loc(predictions, ground_truths)
     field_loss = loss_field(predictions, ground_truths)
+    total_loss = detection_loss + mu * location_loss + rho * field_loss
 
-    return tf.reduce_mean(tf.reduce_sum(detection_loss + mu * location_loss + rho * field_loss, axis=-1))
+    return tf.reduce_mean(tf.reduce_sum(total_loss, axis=-1))
 
 
 if __name__ == '__main__':
-    predictions = [[[0.4, 1.2, 0.8, 0.5, 0, 0.5, 1, 0],
-                    [0.8, 0.2, 0.3, 0.3, 0, 0.9, 0.5, 0]]]
+    predictions = [[
+        [0.8, 0.2, 0.3, 0.3, 0, 0.9, 0.5, 0],
+        [0.4, 1.2, 0.8, 0.5, 0, 0.5, 1, 0]
+                    ]]
     predictions = tf.convert_to_tensor(predictions)
 
     ground_truths = [[[1.0, 1.0, 0.8, 2.],
