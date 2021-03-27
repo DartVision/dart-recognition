@@ -23,48 +23,100 @@ def hungarian_matching(predictions, ground_truths, cost_pred=1, cost_loc=1):
         # ground truth labels
         target_labels = gt[:, 0].numpy().astype(np.int)
 
+        pred_field = tf.nn.softmax(p[:, ])
+
         # from now on we work in numpy
         # Detection costs.
         # 1 - prob_gt. 1 is omitted.
         pred_matrix = -pred_detect[:, target_labels]
-        l2_distances = cdist(p[:, 2:].numpy(), gt[:, 1:].numpy(), metric='euclidean')
+        l2_distances = cdist(p[:, 2:4].numpy(), gt[:, 1:3].numpy(), metric='euclidean')
 
         total_cost_matrix = cost_loc * l2_distances + cost_pred * pred_matrix
-        total_cost_matrix[:, target_labels == 1] = 1
+        total_cost_matrix[:, target_labels == 0] = 0
         _, col_indices = linear_sum_assignment(total_cost_matrix)
         all_indices.append(col_indices)
 
-    return tf.convert_to_tensor(all_indices)
+    return tf.convert_to_tensor(all_indices, dtype=tf.int32)
 
 
-def loss_loc(prediction, ground_truth):
+def loss_loc(predictions, ground_truths):
     """
-    Localization loss. Squared L2 loss
+    Localization loss. Squared L2 loss for all predictions where the gt has an object
+    :param: predictions: (bs, 3, 8) tensor containing predictions
+    :param: ground truths: (bs, 3, 8) tensor containing ground truth annotations
+    :return: location loss
+    """
+    target_class, target_location = ground_truths[:, :, 0], ground_truths[:, :, 1:3]
+    diff = predictions[:, :, 2:4] - target_location
+    diff = diff ** 2
+    # don't sum predictions with target_class == no_object
+    return tf.reduce_sum(target_class * diff)
+
+
+def loss_detect(predictions, ground_truths):
+    """
+    Detection loss. Softmax cross entropy.
     :return:
     """
-    pass
+    target_class = tf.cast(ground_truths[:, :, 0], tf.int32)
+    return tf.nn.sparse_softmax_cross_entropy_with_logits(target_class, predictions[:, :, :2])
 
 
-def loss_detect(prediction, label):
+def loss_field(predictions, ground_truths):
     """
-    Detection loss. Softmax cross entropy
+    Field classification loss. Softmax cross entropy for all predictions where the gt has an object
+    :param predictions:
+    :param ground_truths:
+    :param matching:
     :return:
     """
-    pass
+    # Calculate indices where gt has object
+    indices = tf.where(tf.equal(ground_truths[:, :, 0], 1))
+    indices = tf.reshape(indices[:, -1], ground_truths.shape[:-1])
+
+    target_class = tf.cast(ground_truths[:, :, 3], tf.int32)
+    target_class = tf.gather_nd(target_class, indices[:, :, tf.newaxis], batch_dims=1)
+
+    predicted_class = predictions[:, :, 4:8]
+    predicted_class = tf.gather_nd(predicted_class, indices[:, :, tf.newaxis], batch_dims=1)
+
+    return tf.nn.sparse_softmax_cross_entropy_with_logits(target_class, predicted_class)
 
 
-def hungarian_loss(prediction, ground_truth, mu=1):
-    matching = None
+def hungarian_loss(predictions, ground_truths, mu=1, rho=1):
+    """
+    Hungarian loss similar to that in "End-to-End Object Detection with Transformers" by Carion et al.
+    Expects 3 predictions per image of length 8:
+        - entries 1 and 2 for classification of object/no-object, 1 means object is present
+        - entries 3 and 4 entry for relative x and y positions of object
+        - entries 5-8 for classification of field color the object is located in
+    Expects 3 ground truths per image of length 4:
+        - entry 1 is the object/no-object label
+        - entries 2 and 3 are relative x and y positions
+        - entry 4 is field color class label
+    :param predictions: tensor of shape (bs, 3, 8)
+    :param ground_truths: tensor of shape (bs, 3, 4)
+    :param mu:
+    :return:
+    """
+    # calculate bi-partite matching
+    matching = hungarian_matching(predictions, ground_truths)
+    # rearrange ground truths according to matching
+    ground_truths = tf.gather_nd(ground_truths, matching[:, :, tf.newaxis], batch_dims=1)
 
-    return mu * loss_loc(prediction[:, 2:], ground_truth[:, 1:]) + loss_detect(prediction[:, :2], ground_truth[:, 0])
+    detection_loss = loss_detect(predictions, ground_truths)
+    location_loss = loss_loc(predictions, ground_truths)
+    field_loss = loss_field(predictions, ground_truths)
+
+    return tf.reduce_mean(tf.reduce_sum(detection_loss + mu * location_loss + rho * field_loss, axis=-1))
 
 
 if __name__ == '__main__':
-    predictions = [[[0.4, 1.2, 0.8, 0.5],
-                    [0.8, 0.2, 0.3, 0.3]]]
+    predictions = [[[0.4, 1.2, 0.8, 0.5, 0, 0.5, 1, 0],
+                    [0.8, 0.2, 0.3, 0.3, 0, 0.9, 0.5, 0]]]
     predictions = tf.convert_to_tensor(predictions)
 
-    ground_truths = [[[0, 0.3, 0.36],
-                      [1, 0, 0]]]
+    ground_truths = [[[1.0, 1.0, 0.8, 2.],
+                      [1., 0.3, 0.36, 1.]]]
     ground_truths = tf.convert_to_tensor(ground_truths)
-    print(hungarian_matching(predictions, ground_truths).numpy())
+    print(hungarian_loss(predictions, ground_truths).numpy())
