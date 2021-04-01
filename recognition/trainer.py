@@ -1,19 +1,23 @@
 import tensorflow as tf
 from tqdm import tqdm
 
-from recognition.unet_hires.losses import hungarian_loss
+from recognition.losses import hungarian_loss
 from recognition.unet_hires.model import UNetHiRes
 
 
 class Trainer(object):
-    def __init__(self):
+    def __init__(self, log_dir, train_dataset, eval_dataset):
         self.epochs = 1000
         self.model = UNetHiRes()
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
         self.mu = 1
+        self.rho = 1
         self.loss = hungarian_loss
-        self.train_dataset = None
-        self.eval_dataset = None
+        self.train_dataset = train_dataset
+        self.eval_dataset = eval_dataset
+        self.log_dir = log_dir
+
+        self.summary_writer = tf.summary.create_file_writer(self.log_dir)
 
     def train_step(self, images, ground_truth):
         """
@@ -23,7 +27,7 @@ class Trainer(object):
         :return:
         """
         predictions = self.model(images, training=True)
-        loss = self.loss(images, ground_truth, mu=self.mu)
+        loss = self.loss(predictions, ground_truth, mu=self.mu, rho=self.rho)
         self.optimizer.minimize(loss, self.model.trainable_variables)
         return loss
 
