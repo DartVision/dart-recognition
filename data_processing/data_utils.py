@@ -37,10 +37,11 @@ def copy_annotations(src_dir, out_dir, prefix=''):
             filename = f"{prefix}_{filename}"
         out_file_path = path.join(out_dir, filename)
         if path.exists(out_file_path):
-            raise Exception(
+            print(
                 f'File {path.basename(out_file_path)} already exists in directory {path.dirname(out_file_path)}!')
-        with open(out_file_path, 'w', encoding='utf8') as out_file:
-            json.dump(annotation, out_file)
+        else:
+            with open(out_file_path, 'w', encoding='utf8') as out_file:
+                json.dump(annotation, out_file)
 
 
 def copy_images(src_dir, out_dir, prefix=''):
@@ -61,9 +62,10 @@ def copy_images(src_dir, out_dir, prefix=''):
 
         out_file_path = path.join(out_dir, out_filename)
         if path.exists(out_file_path):
-            raise Exception(
+            print(
                 f'File {path.basename(out_file_path)} already exists in directory {path.dirname(out_file_path)}!')
-        copyfile(image_path, out_file_path)
+        else:
+            copyfile(image_path, out_file_path)
 
 
 if __name__ == '__main__':
