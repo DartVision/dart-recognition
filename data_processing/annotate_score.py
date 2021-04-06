@@ -6,7 +6,7 @@ import numpy as np
 from enum import Enum
 
 
-def start_annotate_score(images_dir, json_dir, out_dir):
+def start_annotate_score(images_dir, json_dir, out_dir, continue_at=''):
     """
     Starts workflow for annotating the score.
     Assumes that json_dir contains json files that are structured as given by `convert_labelme.py`.
@@ -30,6 +30,7 @@ def start_annotate_score(images_dir, json_dir, out_dir):
     You can enter a score for the selected dart using keys d,t,0,...,9.
     You can confirm a score using space. The entered score will only be accepted, if it is a valid option
     as declared above.
+    If you want to go back one dart, press q.
     If you want to skip a dart, press k.
     If you want to quit the whole process, press q or simply close the window.
     :return:
@@ -39,23 +40,40 @@ def start_annotate_score(images_dir, json_dir, out_dir):
     out_dir = path.expanduser(out_dir)
     window = 'window'
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
-    for json_filename in glob(path.join(json_dir, '*.json')):
+
+    json_files = sorted(glob(path.join(json_dir, '*.json')))
+    if continue_at:
+        try:
+            continue_index = json_files.index(path.join(json_dir, continue_at))
+            json_files = json_files[continue_index:]
+        except ValueError:
+            print(f'Could not find file with name {path.join(json_dir, continue_at)} in json files!')
+
+    for json_filename in json_files:
         with open(json_filename, 'rb') as json_file:
             old_json = json.load(json_file)
         img_path = path.join(images_dir, old_json["imageName"])
-        for i in range(len(old_json["shapes"])):
+        print(f'Annotating {path.basename(img_path)}')
+        i = 0
+        while i < len(old_json["shapes"]):
             (res, score) = annotate(window, img_path, old_json["shapes"], i)
             if res == AnnotationResult.QUIT:
                 cv2.destroyAllWindows()
                 return
             elif res == AnnotationResult.SKIP:
+                i += 1
                 continue
             elif res == AnnotationResult.SUCCESSFUL:
                 old_json["shapes"][i]["score"] = score
                 out_path = path.join(out_dir, path.basename(json_filename))
                 with open(out_path, 'w', encoding='utf8') as out_file:
                     json.dump(old_json, out_file, indent=2)
+                i += 1
+            elif res == AnnotationResult.BACK:
+                if i > 0:
+                    i = i-1
 
+    print('Finished annotating.')
     cv2.destroyAllWindows()
 
 
@@ -63,6 +81,7 @@ class AnnotationResult(Enum):
     SUCCESSFUL = 1
     SKIP = 2
     QUIT = 3
+    BACK = 4
 
 
 def is_valid_score(score):
@@ -128,4 +147,7 @@ def annotate(window, img_path, shapes, annotate_index):
         elif key == '\b':
             score = score[:-1]
             draw()
+        elif key == 'b':
+            return AnnotationResult.BACK, score
+
     return AnnotationResult.QUIT, score
