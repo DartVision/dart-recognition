@@ -1,10 +1,8 @@
 import tensorflow as tf
 
-IMAGE_SIZE = 300
 
-
-def mobile_net_v2_encoder():
-    mobile_net = tf.keras.applications.MobileNetV2(input_shape=[IMAGE_SIZE, IMAGE_SIZE, 3],
+def mobile_net_v2_encoder(image_size):
+    mobile_net = tf.keras.applications.MobileNetV2(input_shape=[image_size, image_size, 3],
                                                    weights='imagenet',
                                                    include_top=False)
     layer_names = ["block_1_expand_relu",
@@ -20,9 +18,9 @@ def mobile_net_v2_encoder():
 
 
 class UNetHiRes(tf.keras.models.Model):
-    def __init__(self):
+    def __init__(self, image_size):
         super(UNetHiRes, self).__init__()
-        self.encoder = mobile_net_v2_encoder()
+        self.encoder = mobile_net_v2_encoder(image_size)
 
         self.transpose_conv_1 = tf.keras.layers.Conv2DTranspose(filters=512, kernel_size=3,
                                                                 strides=2, padding='same', use_bias=False)
@@ -41,11 +39,12 @@ class UNetHiRes(tf.keras.models.Model):
         self.batch_norm_4 = tf.keras.layers.BatchNormalization()
 
         # Final dense layer
-        # First two units are for classification, third and fourth for location. 3 predictions maximum
-        self.final_layer = tf.keras.layers.Dense(3*4)
+        # First two units are for classification, third and fourth for location, last 4 for background color of dart
+        # 3 predictions maximum
+        self.final_layer = tf.keras.layers.Dense(3*8)
 
     def call(self, inputs, training=None, **kwargs):
-        # Get output from all five ouput layers of the encoder
+        # Get output from all five output layers of the encoder
         encoder_outputs = self.encoder(inputs, training=training)
 
         x = encoder_outputs[-1]
@@ -71,4 +70,4 @@ class UNetHiRes(tf.keras.models.Model):
 
         x = self.final_layer(x, training=training)
 
-        return tf.reshape(x, (3, 4))
+        return tf.reshape(x, (3, 8))
