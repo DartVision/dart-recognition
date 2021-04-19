@@ -41,11 +41,12 @@ class UNetHiRes(tf.keras.models.Model):
         self.batch_norm_4 = tf.keras.layers.BatchNormalization()
 
         # Final dense layer
-        # First two units are for classification, third and fourth for location. 3 predictions maximum
-        self.final_layer = tf.keras.layers.Dense(3*4)
+        # First two units are for classification, third and fourth for location, last 4 for background color of dart
+        # 3 predictions maximum
+        self.final_layer = tf.keras.layers.Dense(3*8)
 
     def call(self, inputs, training=None, **kwargs):
-        # Get output from all five ouput layers of the encoder
+        # Get output from all five output layers of the encoder
         encoder_outputs = self.encoder(inputs, training=training)
 
         x = encoder_outputs[-1]
@@ -71,4 +72,4 @@ class UNetHiRes(tf.keras.models.Model):
 
         x = self.final_layer(x, training=training)
 
-        return tf.reshape(x, (3, 4))
+        return tf.reshape(x, (3, 8))

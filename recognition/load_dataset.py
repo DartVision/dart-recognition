@@ -55,7 +55,7 @@ def annotation_to_keypoints(image, annotation):
 
 def keypoints_to_annotation(image, annotation, keypoints):
     for i, kp in enumerate(keypoints.to_xy_array()):
-        dims = image.shape[:2]
+        dims = image.shape[:2][::-1]
         if annotation[i, 0] > 0.5:
             annotation[i, 1:3] = (2 * kp - dims) / dims
     return annotation
