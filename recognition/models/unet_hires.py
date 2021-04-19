@@ -1,10 +1,8 @@
 import tensorflow as tf
 
-IMAGE_SIZE = 300
 
-
-def mobile_net_v2_encoder():
-    mobile_net = tf.keras.applications.MobileNetV2(input_shape=[IMAGE_SIZE, IMAGE_SIZE, 3],
+def mobile_net_v2_encoder(image_size):
+    mobile_net = tf.keras.applications.MobileNetV2(input_shape=[image_size, image_size, 3],
                                                    weights='imagenet',
                                                    include_top=False)
     layer_names = ["block_1_expand_relu",
@@ -20,9 +18,9 @@ def mobile_net_v2_encoder():
 
 
 class UNetHiRes(tf.keras.models.Model):
-    def __init__(self):
+    def __init__(self, image_size):
         super(UNetHiRes, self).__init__()
-        self.encoder = mobile_net_v2_encoder()
+        self.encoder = mobile_net_v2_encoder(image_size)
 
         self.transpose_conv_1 = tf.keras.layers.Conv2DTranspose(filters=512, kernel_size=3,
                                                                 strides=2, padding='same', use_bias=False)

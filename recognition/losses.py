@@ -49,11 +49,15 @@ def loss_loc(predictions, ground_truths):
     :param: ground truths: (bs, 3, 8) tensor containing ground truth annotations
     :return: location loss
     """
-    target_class, target_location = ground_truths[:, :, 0], ground_truths[:, :, 1:3]
+    target_class, target_location = ground_truths[:, :, :1], ground_truths[:, :, 1:3]
     diff = predictions[:, :, 2:4] - target_location
     diff = diff ** 2
+
+    # Adjust shape of target_class
+    target_class = tf.tile(target_class, multiples=(1, 1, diff.shape[-1]))
     # don't sum predictions with target_class == no_object
-    return tf.reduce_sum(target_class * diff)
+    distances = tf.reduce_sum(target_class * diff, axis=-1)
+    return tf.reduce_mean(distances)
 
 
 def loss_detect(predictions, ground_truths):
@@ -62,7 +66,8 @@ def loss_detect(predictions, ground_truths):
     :return:
     """
     target_class = tf.cast(ground_truths[:, :, 0], tf.int32)
-    return tf.nn.sparse_softmax_cross_entropy_with_logits(target_class, predictions[:, :, :2])
+    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=target_class, logits=predictions[:, :, :2])
+    return tf.reduce_mean(cross_entropy)
 
 
 def loss_field(predictions, ground_truths):
@@ -73,26 +78,26 @@ def loss_field(predictions, ground_truths):
     :param matching:
     :return:
     """
-    predicted_class, target_class = extract_predict_and_target_fields(ground_truths, predictions)
+    predicted_class, target_class = extract_predict_and_target_fields(predictions, ground_truths)
 
-    return tf.nn.sparse_softmax_cross_entropy_with_logits(target_class, predicted_class)
+    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=target_class, logits=predicted_class)
+    return tf.reduce_mean(cross_entropy)
 
 
-def extract_predict_and_target_fields(ground_truths, predictions):
+def extract_predict_and_target_fields(predictions, ground_truths):
     # Calculate indices where gt has object
     indices = tf.where(tf.equal(ground_truths[:, :, 0], 1))
-    indices = tf.reshape(indices[:, -1], ground_truths.shape[:-1])
 
     target_class = tf.cast(ground_truths[:, :, 3], tf.int32)
-    target_class = tf.gather_nd(target_class, indices[:, :, tf.newaxis], batch_dims=1)
+    target_class = tf.gather_nd(target_class, indices)
 
     predicted_class = predictions[:, :, 4:8]
-    predicted_class = tf.gather_nd(predicted_class, indices[:, :, tf.newaxis], batch_dims=1)
+    predicted_class = tf.gather_nd(predicted_class, indices)
 
     return predicted_class, target_class
 
 
-def hungarian_loss(predictions, ground_truths, mu=1, rho=1):
+def hungarian_loss(predictions, ground_truths, mu=1, rho=1, global_step=None):
     """
     Hungarian loss similar to that in "End-to-End Object Detection with Transformers" by Carion et al.
     Expects 3 predictions per image of length 8:
@@ -117,14 +122,13 @@ def hungarian_loss(predictions, ground_truths, mu=1, rho=1):
     location_loss = loss_loc(predictions, ground_truths)
     field_loss = loss_field(predictions, ground_truths)
 
-    global_step = tf.compat.v1.train.get_or_create_global_step()
     tf.summary.scalar('loss_train/detection', tf.reduce_mean(detection_loss), step=global_step)
     tf.summary.scalar('loss_train/location', tf.reduce_mean(location_loss), step=global_step)
     tf.summary.scalar('loss_train/field', tf.reduce_mean(field_loss), step=global_step)
 
     total_loss = detection_loss + mu * location_loss + rho * field_loss
 
-    return tf.reduce_mean(tf.reduce_sum(total_loss, axis=-1))
+    return total_loss
 
 
 if __name__ == '__main__':
