@@ -73,6 +73,12 @@ def loss_field(predictions, ground_truths):
     :param matching:
     :return:
     """
+    predicted_class, target_class = extract_predict_and_target_fields(ground_truths, predictions)
+
+    return tf.nn.sparse_softmax_cross_entropy_with_logits(target_class, predicted_class)
+
+
+def extract_predict_and_target_fields(ground_truths, predictions):
     # Calculate indices where gt has object
     indices = tf.where(tf.equal(ground_truths[:, :, 0], 1))
     indices = tf.reshape(indices[:, -1], ground_truths.shape[:-1])
@@ -83,7 +89,7 @@ def loss_field(predictions, ground_truths):
     predicted_class = predictions[:, :, 4:8]
     predicted_class = tf.gather_nd(predicted_class, indices[:, :, tf.newaxis], batch_dims=1)
 
-    return tf.nn.sparse_softmax_cross_entropy_with_logits(target_class, predicted_class)
+    return predicted_class, target_class
 
 
 def hungarian_loss(predictions, ground_truths, mu=1, rho=1):
@@ -112,9 +118,9 @@ def hungarian_loss(predictions, ground_truths, mu=1, rho=1):
     field_loss = loss_field(predictions, ground_truths)
 
     global_step = tf.compat.v1.train.get_or_create_global_step()
-    tf.summary.scalar('loss/detection', tf.reduce_mean(detection_loss), step=global_step)
-    tf.summary.scalar('loss/location', tf.reduce_mean(location_loss), step=global_step)
-    tf.summary.scalar('loss/field', tf.reduce_mean(field_loss), step=global_step)
+    tf.summary.scalar('loss_train/detection', tf.reduce_mean(detection_loss), step=global_step)
+    tf.summary.scalar('loss_train/location', tf.reduce_mean(location_loss), step=global_step)
+    tf.summary.scalar('loss_train/field', tf.reduce_mean(field_loss), step=global_step)
 
     total_loss = detection_loss + mu * location_loss + rho * field_loss
 
