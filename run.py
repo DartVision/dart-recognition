@@ -4,6 +4,12 @@ from recognition.load_dataset import prepare_dataset
 from recognition.trainer import Trainer
 
 if __name__ == '__main__':
+
+    # limit gpu memory allocation
+    gpus = tf.config.list_physical_devices('GPU')
+    for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
+
     image_size = 224
     train_dataset, test_dataset = prepare_dataset(augment=False, size=image_size)
 

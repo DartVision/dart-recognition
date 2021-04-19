@@ -122,9 +122,9 @@ def hungarian_loss(predictions, ground_truths, mu=1, rho=1, global_step=None):
     location_loss = loss_loc(predictions, ground_truths)
     field_loss = loss_field(predictions, ground_truths)
 
-    tf.summary.scalar('loss_train/detection', tf.reduce_mean(detection_loss), step=global_step)
-    tf.summary.scalar('loss_train/location', tf.reduce_mean(location_loss), step=global_step)
-    tf.summary.scalar('loss_train/field', tf.reduce_mean(field_loss), step=global_step)
+    tf.summary.scalar('train/detection', tf.reduce_mean(detection_loss), step=global_step.numpy())
+    tf.summary.scalar('train/location', tf.reduce_mean(location_loss), step=global_step.numpy())
+    tf.summary.scalar('train/field', tf.reduce_mean(field_loss), step=global_step.numpy())
 
     total_loss = detection_loss + mu * location_loss + rho * field_loss
 
