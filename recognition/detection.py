@@ -1,0 +1,54 @@
+import cv2
+import tensorflow as tf
+
+
+class DartDetector(object):
+
+    def __init__(self):
+        self.detection_threshold = 0.5
+        self.macro_detector = None
+        self.micro_detector = None
+        self.two_image_result_fusion = None
+
+    def detect_darts_on_image(self, image1, image2):
+        """
+        Detects up to 3 darts on the given image pair.
+        :param image1:
+        :param image2:
+        :return:
+        """
+        resized_image1 = cv2.resize(image1, (300, 300), interpolation='bilinear')
+        resized_image2 = cv2.resize(image2, (300, 300), interpolation='bilinear')
+        images = tf.convert_to_tensor([resized_image1, resized_image2])
+
+        detections = self.macro_detector(images)
+        detections1 = detections[0]
+        detections2 = detections[1]
+
+        sub_images1 = self._extract_sub_image(image1, detections1)
+        sub_images2 = self._extract_sub_image(image2, detections2)
+
+        n = len(sub_images1)
+        sub_images = tf.stack([sub_images1, sub_images2])
+
+        sub_image_detections = self.micro_detector(sub_images)
+        sub_image_detections1 = sub_image_detections[0:n]
+        sub_image_detections2 = sub_image_detections[n:]
+
+        detections = self.two_image_result_fusion(sub_image_detections1, sub_image_detections2)
+
+        return detections
+
+    def _extract_sub_image(self, image, detections):
+        sub_images = []
+        h, w = image.shape
+        for detection in detections:
+            if detections[0] >= self.detection_threshold:
+                x, y = detection[2, 3]
+                abs_x, abs_y = int(x * w), int(y * h)
+                abs_x = max(min(abs_x, w - 150), 150)
+                abs_y = max(min(abs_y, h - 150), 150)
+                sub_image = image[abs_x - 150:abs_x + 150, abs_y - 150: abs_y + 150]
+                sub_images.append(sub_image)
+
+        return sub_images
