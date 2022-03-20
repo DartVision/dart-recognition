@@ -3,7 +3,7 @@ from os import path, makedirs
 
 from recognition.evaluation import evaluate_multi_metric
 from recognition.losses import hungarian_loss
-from recognition.models.mobile_net_v2 import CustomMobileNetV2
+from recognition.models.mobile_net_v2 import MobileNetV2MacroDetector
 from recognition.models.unet_hires import UNetHiRes
 
 
@@ -14,8 +14,8 @@ class Trainer(object):
 
     def __init__(self, log_dir, checkpoint_dir, experiment_name, train_dataset, eval_dataset, image_size):
         self.epochs = 1001
-        self.model = CustomMobileNetV2(image_size=image_size)
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
+        self.model = MobileNetV2MacroDetector(image_size=image_size)
+        self.optimizer = tf.keras.optimizers.SGD(learning_rate=1e-2)
         self.mu = 1
         self.rho = 1
         self.loss = hungarian_loss

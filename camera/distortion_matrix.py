@@ -10,6 +10,7 @@ def calc_distortion_matrix(chessboard_picture_path, pattern_size=(7, 9), interac
     As input, we expect a picture shot on the camera showing a standard checkerboard with the according patternSize
     (see https://google.com/search?q=chessboard+camera+calibration).
     Make sure, the chessboard is completely flat and well visible.
+    :param interactive: interactive calibration
     """
     image = cv2.imread(chessboard_picture_path)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)

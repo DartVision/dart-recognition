@@ -5,9 +5,9 @@ from sklearn.metrics import average_precision_score
 
 def evaluate_multi_metric(predictions, ground_truths):
     """
-
-    :param predictions:
-    :param ground_truths:
+    Evaluates the given predictions by computing detection loss, distance loss and field color loss.
+    :param predictions: the predictions
+    :param ground_truths: the ground truths
     :return:
     """
     matching = hungarian_matching(predictions, ground_truths)

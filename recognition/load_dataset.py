@@ -89,7 +89,7 @@ def augment_image(image, annotation):
 
 
 def resize_image(image, annotation, size):
-    image = tf.image.resize(image, (size, size))
+    image = tf.image.resize(image, (size, size), method=tf.image.ResizeMethod.BILINEAR)
     return image, annotation
 
 
