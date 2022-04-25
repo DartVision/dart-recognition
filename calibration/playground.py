@@ -71,6 +71,10 @@ if __name__ == '__main__':
     green_mask = mask_to_image(green_mask)
     white_mask = mask_to_image(white_mask)
     black_mask = mask_to_image(black_mask)
+
+    cv2.imshow('sdfsdkfj', red_mask)
+    cv2.waitKey()
+
     red_mask = process_mask(red_mask)
     green_mask = process_mask(green_mask)
     white_mask = process_mask(white_mask)
@@ -127,6 +131,9 @@ if __name__ == '__main__':
         y2 = int(y0 - 10000 * (a))
 
         cv2.line(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+
+    cv2.imshow('jk', image)
+    cv2.waitKey()
 
     image = image[:, :, [2, 1, 0]]
     plt.subplot(121)
