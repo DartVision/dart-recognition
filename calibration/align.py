@@ -105,10 +105,6 @@ def compute_reference_transformation(intermediate_keypoints):
 def align_binary_with_reference(red_green_mask, binary_reference_image, color_image):
     corner_algo = lambda image: cv2.goodFeaturesToTrack(image, 25, 0.01, 10)
 
-    canny_edges = cv2.Canny(red_green_mask, 50, 200)
-
-    cv2.imshow('canny', canny_edges)
-
     contours, hier = cv2.findContours(red_green_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     # cv2.drawContours(color_image, contours, -1, (0, 255, 0), 1)
@@ -126,9 +122,53 @@ def align_binary_with_reference(red_green_mask, binary_reference_image, color_im
 
     # color_image = cv2.cvtColor(red_green_mask.copy(), cv2.COLOR_GRAY2BGR)
 
-    cv2.ellipse(color_image, (center, radii, rot), (0, 0, 255), 1)
+    # cv2.ellipse(color_image, (center, radii, rot), (0, 0, 255), 1)
 
-    cv2.imshow('Outer ellipse', scoring_area_mask)
+    # cv2.imshow('Outer ellipse', scoring_area_mask)
+
+    scoring_area = cv2.bitwise_and(color_image, color_image, mask=scoring_area_mask)
+    gray_scoring_area = cv2.cvtColor(scoring_area, cv2.COLOR_BGR2GRAY)
+
+    canny_edges = cv2.Canny(gray_scoring_area, 50, 200)
+    cv2.imshow('canny', canny_edges)
+
+    lines = cv2.HoughLines(canny_edges, 1, np.pi / 360, 150)
+
+    # if lines is not None:
+    #     for i in range(0, min(len(lines), 50)):
+    #         rho = lines[i][0][0]
+    #         theta = lines[i][0][1]
+    #         a = np.cos(theta)
+    #         b = np.sin(theta)
+    #         x0 = a * rho
+    #         y0 = b * rho
+    #         pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
+    #         pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
+    #         cv2.line(scoring_area, pt1, pt2, (0, 0, 255), 1, cv2.LINE_AA)
+
+    lines = _local_non_maximum_suppression(lines)
+
+    if lines is not None:
+        for i in range(0, min(len(lines), 20)):
+            rho = lines[i][0]
+            theta = lines[i][1]
+            a = np.cos(theta)
+            b = np.sin(theta)
+            x0 = a * rho
+            y0 = b * rho
+            pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
+            pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
+            cv2.line(scoring_area, pt1, pt2, (0, 0, 255), 1, cv2.LINE_AA)
+
+    # compute intersections with outer ellipse
+    outer_ellipse_intersections = []
+    for rho, theta in lines[:1]:
+        outer_ellipse_intersections.extend(compute_ellipse_line_intersection((center, radii, rot), (rho, theta)))
+
+    cv2.imshow('scoring area', scoring_area)
+
+    cv2.imshow('hough lines', color_image)
+
     # corners = corner_algo(binary_image)
 
     # best_corners = np.argwhere(corners > 0.2 * np.max(corners))
@@ -148,6 +188,82 @@ def align_binary_with_reference(red_green_mask, binary_reference_image, color_im
     # corners = colored
     # cv2.imshow('corners', corners)
     cv2.waitKey()
+
+
+def compute_ellipse_line_intersection(ellipse, line):
+    center, radii, rot = ellipse
+    rho, theta = line
+
+    # center = (400, 300)
+    # rot = 90
+    # rho = 300
+    # theta = np.pi/2
+
+    img = np.zeros((600, 800), dtype=np.uint8)
+    cv2.ellipse(img, (center, radii, rot), 255, 1)
+    a = np.cos(theta)
+    b = np.sin(theta)
+    x0 = a * rho
+    y0 = b * rho
+    pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
+    pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
+    cv2.line(img, pt1, pt2, 255, 1, cv2.LINE_AA)
+    cv2.imshow('ellipse and line', img)
+
+    d = _distance_line_point((0, np.pi/2), (1, 0))
+    rho1 = rho
+    # rotate line around ellipsis center such that the line and ellipse are parallel to axes (i.e. rot = 0)
+    cx, cy = center[::-1]
+    rho = _distance_line_point((rho, theta), (cx, cy))
+    theta -= rot * np.pi / 180
+    rho = _distance_line_point((rho, theta), (-cx, -cy))
+
+    rho2 = _distance_line_point((rho, theta), (cx, cy))
+
+    img = np.zeros((600, 800), dtype=np.uint8)
+    cv2.ellipse(img, (center, radii, 0), 255, 1)
+    a = np.cos(theta)
+    b = np.sin(theta)
+    x0 = a * rho
+    y0 = b * rho
+    pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
+    pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
+    cv2.line(img, pt1, pt2, 255, 1, cv2.LINE_AA)
+    cv2.imshow('ellipse and line after', img)
+
+    return []
+
+
+def _distance_line_point(line, point):
+    rho, theta = line
+    x, y = point
+    # dist = | <w, x> + b |
+    return np.abs(np.cos(theta) * x + np.sin(theta) * y + rho) / np.linalg.norm([np.cos(theta), np.sin(theta)])
+
+
+def _local_non_maximum_suppression(lines, num_maxima=10, rho_diff=10, angle_diff=3):
+    # assumes lines to be ordered by cofidence
+    if lines is None or len(lines) == 0:
+        return
+    nms_suppressed_lines = np.zeros((min(num_maxima, len(lines)), 2))
+    nms_suppressed_lines[0] = np.asarray(lines[0])
+    k = 0
+    for i in range(min(num_maxima, len(lines) - 1)):
+        while True:
+            k += 1
+            rho, theta = lines[k, 0]
+            if rho < 0:
+                rho *= -1
+                theta -= np.pi
+            closeness_rho = np.isclose(rho, nms_suppressed_lines[:, 0], atol=rho_diff)
+            closeness_theta = np.isclose(theta, nms_suppressed_lines[:, 1], atol=2 * np.pi * angle_diff / 360)
+
+            # if none is close, add line
+            if np.all([~closeness_rho, ~closeness_theta]):
+                nms_suppressed_lines[i] = np.array([rho, theta])
+                break
+
+    return nms_suppressed_lines
 
 
 if __name__ == '__main__':
