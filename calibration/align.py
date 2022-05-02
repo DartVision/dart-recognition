@@ -163,7 +163,8 @@ def align_binary_with_reference(red_green_mask, binary_reference_image, color_im
     # compute intersections with outer ellipse
     outer_ellipse_intersections = []
     for rho, theta in lines[:1]:
-        outer_ellipse_intersections.extend(compute_ellipse_line_intersection((center, radii, rot), (rho, theta)))
+        r1, r2 = radii
+        outer_ellipse_intersections.extend(compute_ellipse_line_intersection((center, (r1/2, r2/2), rot), (rho, theta)))
 
     cv2.imshow('scoring area', scoring_area)
 
@@ -192,6 +193,7 @@ def align_binary_with_reference(red_green_mask, binary_reference_image, color_im
 
 def compute_ellipse_line_intersection(ellipse, line):
     center, radii, rot = ellipse
+    r1, r2 = radii
     rho, theta = line
 
     # center = (400, 300)
@@ -200,7 +202,8 @@ def compute_ellipse_line_intersection(ellipse, line):
     # theta = np.pi/2
 
     img = np.zeros((600, 800), dtype=np.uint8)
-    cv2.ellipse(img, (center, radii, rot), 255, 1)
+    cv2.ellipse(img, (center, (2 * r1, 2*r2), rot), 255, 1)
+    cv2.circle(img, (int(center[0]), int(center[1])), radius=3, color=255)
     a = np.cos(theta)
     b = np.sin(theta)
     x0 = a * rho
@@ -208,20 +211,49 @@ def compute_ellipse_line_intersection(ellipse, line):
     pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
     pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
     cv2.line(img, pt1, pt2, 255, 1, cv2.LINE_AA)
-    cv2.imshow('ellipse and line', img)
+    cv2.imshow('ellipse and line before', img)
 
-    d = _distance_line_point((0, np.pi/2), (1, 0))
-    rho1 = rho
     # rotate line around ellipsis center such that the line and ellipse are parallel to axes (i.e. rot = 0)
-    cx, cy = center[::-1]
-    rho = _distance_line_point((rho, theta), (cx, cy))
+    cx, cy = center
+    rho = _distance_line_point((-rho, theta), (cx, cy))
     theta -= rot * np.pi / 180
-    rho = _distance_line_point((rho, theta), (-cx, -cy))
 
-    rho2 = _distance_line_point((rho, theta), (cx, cy))
+    # from now on, work in coordinate system where ellipse is in center, i.e. don't execute the following line
+    # rho = _distance_line_point((-rho, theta), (-cx, -cy))
 
+    # if line is parallel to the y axis
+    if np.isclose(theta, 0):
+        x1, y1 = 0, r2
+        x2, y2 = 0, -r2
+    else:
+        m = np.tan(theta + np.pi / 2)
+        t = rho / np.cos(np.pi/2 - theta)
+
+        a = r1 ** 2 * m ** 2 + r2 ** 2
+        b = 2 * r1 ** 2 * m * t
+        c = r1 ** 2 * (t ** 2 - r2 ** 2)
+
+        discriminant = b ** 2 - 4 * a * c
+
+        if discriminant < 0:
+            return None
+
+        x1 = (-b + np.sqrt(discriminant)) / (2 * a)
+        y1 = m * x1 + t
+
+        x2 = (-b - np.sqrt(discriminant)) / (2 * a)
+        y2 = m * x2 + t
+
+    # transform intersection points back to original coordinate system
+    x1, x2 = x1 + cx, x2 + cx
+    y1, y2 = y1 + cy, y2 + cy
+
+    rho = _distance_line_point((-rho, theta), (-cx, -cy))
     img = np.zeros((600, 800), dtype=np.uint8)
-    cv2.ellipse(img, (center, radii, 0), 255, 1)
+    cv2.ellipse(img, (center, (2 * r1, 2*r2), 0), 255, 1)
+    cv2.circle(img, (int(center[0]), int(center[1])), radius=3, color=255)
+    cv2.circle(img, (int(x1), int(y1)), radius=5, color=255)
+    cv2.circle(img, (int(x2), int(y2)), radius=5, color=255)
     a = np.cos(theta)
     b = np.sin(theta)
     x0 = a * rho
@@ -231,14 +263,14 @@ def compute_ellipse_line_intersection(ellipse, line):
     cv2.line(img, pt1, pt2, 255, 1, cv2.LINE_AA)
     cv2.imshow('ellipse and line after', img)
 
-    return []
+    return (x1, y1), (x2, y2)
 
 
 def _distance_line_point(line, point):
     rho, theta = line
     x, y = point
     # dist = | <w, x> + b |
-    return np.abs(np.cos(theta) * x + np.sin(theta) * y + rho) / np.linalg.norm([np.cos(theta), np.sin(theta)])
+    return np.abs(np.cos(theta) * x + np.sin(theta) * y + rho)
 
 
 def _local_non_maximum_suppression(lines, num_maxima=10, rho_diff=10, angle_diff=3):
