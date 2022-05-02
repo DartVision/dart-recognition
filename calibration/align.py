@@ -2,6 +2,8 @@ import cv2
 import json
 import numpy as np
 
+from calibration.ideal_board import create_ideal_board
+
 
 def extract_red_green_areas(image):
     """
@@ -116,9 +118,9 @@ def align_binary_with_reference(red_green_mask, binary_reference_image, color_im
     center, radii, rot = cv2.fitEllipse(outer_ellipse_countour)
 
     # increase radii by 5% for safe margin
-    radii = tuple(i * 1.05 for i in radii)
+    scaled_radii = tuple(i * 1.05 for i in radii)
 
-    scoring_area_mask = cv2.ellipse(np.zeros_like(red_green_mask, dtype=np.uint8), (center, radii, rot), 255, -1)
+    scoring_area_mask = cv2.ellipse(np.zeros_like(red_green_mask, dtype=np.uint8), (center, scaled_radii, rot), 255, -1)
 
     # color_image = cv2.cvtColor(red_green_mask.copy(), cv2.COLOR_GRAY2BGR)
 
@@ -146,57 +148,72 @@ def align_binary_with_reference(red_green_mask, binary_reference_image, color_im
     #         pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
     #         cv2.line(scoring_area, pt1, pt2, (0, 0, 255), 1, cv2.LINE_AA)
 
-    lines = _local_non_maximum_suppression(lines)
+    lines = _local_non_maximum_suppression(lines, num_maxima=10)
 
-    if lines is not None:
-        for i in range(0, min(len(lines), 20)):
-            rho = lines[i][0]
-            theta = lines[i][1]
-            a = np.cos(theta)
-            b = np.sin(theta)
-            x0 = a * rho
-            y0 = b * rho
-            pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
-            pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
-            cv2.line(scoring_area, pt1, pt2, (0, 0, 255), 1, cv2.LINE_AA)
+    # if lines is not None:
+    #     for i in range(0, min(len(lines), 20)):
+    #         rho = lines[i][0]
+    #         theta = lines[i][1]
+    #         a = np.cos(theta)
+    #         b = np.sin(theta)
+    #         x0 = a * rho
+    #         y0 = b * rho
+    #         pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
+    #         pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
+    #         cv2.line(scoring_area, pt1, pt2, (0, 0, 255), 1, cv2.LINE_AA)
+
+    # normalize angles
+    for i in range(len(lines)):
+        rho, theta = lines[i]
+        if theta < 0:
+            lines[i] = (-rho, theta + np.pi)
+
+    # sort lines by angles
+    lines = sorted(lines, key=lambda l: l[1])
+
+    # heuristically adjust radii and center - or dont
+    # radii = (radii[0] + 3, radii[1])
+    # center = (center[0], center[1]-2)
 
     # compute intersections with outer ellipse
-    outer_ellipse_intersections = []
-    for rho, theta in lines:
+    outer_ellipse_intersections = np.zeros((20, 2))
+    for i, (rho, theta) in enumerate(lines):
         r1, r2 = radii
-        outer_ellipse_intersections.extend(
-            compute_ellipse_line_intersection((center, (r1 / 2, r2 / 2), rot), (rho, theta)))
+        intersections = compute_ellipse_line_intersection((center, (r1 / 2, r2 / 2), rot), (rho, theta))
+        if intersections is None:
+            # TODO: handle this case
+            raise Exception("Bad line!")
+        p1, p2 = intersections
+        outer_ellipse_intersections[i] = p1
+        outer_ellipse_intersections[i + 10] = p2
 
-
-    for point in outer_ellipse_intersections:
+    for i, point in enumerate(outer_ellipse_intersections):
         x, y = point[:2].astype(np.int)
         cv2.circle(scoring_area, (x, y), 2, (0, 255, 0), -1)
+        # cv2.putText(scoring_area, f'{i}', (x + 2, y + 2), fontFace=cv2.FONT_HERSHEY_TRIPLEX, fontScale=1, color=(255, 255, 255))
     cv2.imshow('scoring area', scoring_area)
 
-    # cv2.imshow('hough lines', color_image)
+    ideal_board = create_ideal_board()
+    reference_points = 200 * (ideal_board[5::6] + 1)
 
-    # corners = corner_algo(binary_image)
+    M, mask = cv2.findHomography(outer_ellipse_intersections, reference_points, cv2.RANSAC, 5.0)
+    transformed = cv2.warpPerspective(scoring_area, M, (800, 600))
+    cv2.circle(transformed, (200, 200), radius=200, color=(255, 255, 128), thickness=1)
+    cv2.circle(transformed, (200, 200), radius=200 * 107 // 170, color=(255, 255, 128), thickness=1)
+    cv2.circle(transformed, (200, 200), radius=3, color=(0, 0, 255), thickness=-1)
+    cv2.imshow('transformed', transformed)
 
-    # best_corners = np.argwhere(corners > 0.2 * np.max(corners))
-
-    # reference_corners = corner_algo(binary_reference_image)
-    # best_reference_corners = np.argwhere(reference_corners > 0.2 * np.max(reference_corners))
-
-    # M, mask = cv2.findHomography(best_corners[:50], best_reference_corners[:50], cv2.RANSAC, 5.0)
-
-    # final_img = cv2.drawMatches(image, kp,
-    #                             intermediate_image, ref_kp, matches, None)
-    # final_img = cv2.resize(final_img, (2000, 1000))
-
-    # corners = cv2.dilate(corners, None)
-    # colored = cv2.cvtColor(binary_image, cv2.COLOR_GRAY2BGR)
-    # colored[corners > 0.2 * np.max(corners)] = [0, 0, 255]
-    # corners = colored
-    # cv2.imshow('corners', corners)
     cv2.waitKey()
 
 
 def compute_ellipse_line_intersection(ellipse, line):
+    """
+
+    Expecte theta to be in [0, np.pi)
+    :param ellipse:
+    :param line:
+    :return:
+    """
     center, radii, rot = ellipse
     r1, r2 = radii
     rho, theta = line
@@ -301,6 +318,10 @@ def compute_ellipse_line_intersection(ellipse, line):
     # pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
     # cv2.line(img, pt1, pt2, 255, 1, cv2.LINE_AA)
     # cv2.imshow('ellipse and line unrotated after', img)
+
+    # return point with rightmost x coordinate first
+    if p2[0] > p1[0]:
+        p1, p2 = p2, p1
 
     return p1, p2
 

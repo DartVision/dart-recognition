@@ -2,6 +2,11 @@ import numpy as np
 
 
 def create_ideal_board():
+    """
+    Creates ideal board coordinates. Centered at [0, 0] with maximal radius of 1.
+    Starts at line between 5 and 20
+    :return:
+    """
     # measurements taken from https://commons.wikimedia.org/wiki/File:Dartboard_Abmessungen.svg
     # all radiuses are measured to the inside edge of the wires
     eye_rad = 12.7 / 2
