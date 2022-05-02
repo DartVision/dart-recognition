@@ -162,13 +162,18 @@ def align_binary_with_reference(red_green_mask, binary_reference_image, color_im
 
     # compute intersections with outer ellipse
     outer_ellipse_intersections = []
-    for rho, theta in lines[:1]:
+    for rho, theta in lines:
         r1, r2 = radii
-        outer_ellipse_intersections.extend(compute_ellipse_line_intersection((center, (r1/2, r2/2), rot), (rho, theta)))
+        outer_ellipse_intersections.extend(
+            compute_ellipse_line_intersection((center, (r1 / 2, r2 / 2), rot), (rho, theta)))
 
+
+    for point in outer_ellipse_intersections:
+        x, y = point[:2].astype(np.int)
+        cv2.circle(scoring_area, (x, y), 2, (0, 255, 0), -1)
     cv2.imshow('scoring area', scoring_area)
 
-    cv2.imshow('hough lines', color_image)
+    # cv2.imshow('hough lines', color_image)
 
     # corners = corner_algo(binary_image)
 
@@ -197,21 +202,27 @@ def compute_ellipse_line_intersection(ellipse, line):
     rho, theta = line
 
     # center = (400, 300)
-    # rot = 90
-    # rho = 300
-    # theta = np.pi/2
+    # rot = 60
+    # rho = 400
+    # theta = np.pi/6
+    # line = (rho, theta)
 
-    img = np.zeros((600, 800), dtype=np.uint8)
-    cv2.ellipse(img, (center, (2 * r1, 2*r2), rot), 255, 1)
-    cv2.circle(img, (int(center[0]), int(center[1])), radius=3, color=255)
-    a = np.cos(theta)
-    b = np.sin(theta)
-    x0 = a * rho
-    y0 = b * rho
-    pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
-    pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
-    cv2.line(img, pt1, pt2, 255, 1, cv2.LINE_AA)
-    cv2.imshow('ellipse and line before', img)
+    # img = np.zeros((600, 800), dtype=np.uint8)
+    # cv2.ellipse(img, (center, (2 * r1, 2*r2), rot), 255, 1)
+    # cv2.circle(img, (int(center[0]), int(center[1])), radius=3, color=255)
+    # a = np.cos(theta)
+    # b = np.sin(theta)
+    # x0 = a * rho
+    # y0 = b * rho
+    # pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
+    # pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
+    # cv2.line(img, pt1, pt2, 255, 1, cv2.LINE_AA)
+    # cv2.imshow('ellipse and line before', img)
+
+    # shift theta to [0, pi] by point reflection
+    if theta < 0:
+        theta = theta + np.pi
+        rho = -rho
 
     # rotate line around ellipsis center such that the line and ellipse are parallel to axes (i.e. rot = 0)
     cx, cy = center
@@ -226,9 +237,11 @@ def compute_ellipse_line_intersection(ellipse, line):
         x1, y1 = 0, r2
         x2, y2 = 0, -r2
     else:
+        # use y = m * x + t representation
         m = np.tan(theta + np.pi / 2)
-        t = rho / np.cos(np.pi/2 - theta)
+        t = rho / np.cos(np.pi / 2 - theta)
 
+        # solve quadratic equation
         a = r1 ** 2 * m ** 2 + r2 ** 2
         b = 2 * r1 ** 2 * m * t
         c = r1 ** 2 * (t ** 2 - r2 ** 2)
@@ -245,25 +258,51 @@ def compute_ellipse_line_intersection(ellipse, line):
         y2 = m * x2 + t
 
     # transform intersection points back to original coordinate system
-    x1, x2 = x1 + cx, x2 + cx
-    y1, y2 = y1 + cy, y2 + cy
+    # x1, x2 = x1 + cx, x2 + cx
+    # y1, y2 = y1 + cy, y2 + cy
 
-    rho = _distance_line_point((-rho, theta), (-cx, -cy))
-    img = np.zeros((600, 800), dtype=np.uint8)
-    cv2.ellipse(img, (center, (2 * r1, 2*r2), 0), 255, 1)
-    cv2.circle(img, (int(center[0]), int(center[1])), radius=3, color=255)
-    cv2.circle(img, (int(x1), int(y1)), radius=5, color=255)
-    cv2.circle(img, (int(x2), int(y2)), radius=5, color=255)
-    a = np.cos(theta)
-    b = np.sin(theta)
-    x0 = a * rho
-    y0 = b * rho
-    pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
-    pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
-    cv2.line(img, pt1, pt2, 255, 1, cv2.LINE_AA)
-    cv2.imshow('ellipse and line after', img)
+    # rotate and then shift back
+    alpha = rot * np.pi / 180 + np.pi
+    R = np.asarray([[np.cos(alpha), -np.sin(alpha)], [np.sin(alpha), np.cos(alpha)]])
+    center = np.asarray([cx, cy])
+    p1 = R @ (np.asarray([x1, y1])) + center
+    p2 = R @ (np.asarray([x2, y2])) + center
 
-    return (x1, y1), (x2, y2)
+    # rho1, theta1 = line
+    # img = np.zeros((600, 800), dtype=np.uint8)
+    # cv2.ellipse(img, ((int(center[0]), int(center[1])), (2 * r1, 2*r2), rot), 255, 1)
+    # cv2.circle(img, (int(center[0]), int(center[1])), radius=3, color=255)
+    # a1, b1 = p1[:2]
+    # a2, b2 = p2[:2]
+    # cv2.circle(img, (int(a1), int(b1)), radius=5, color=255)
+    # cv2.circle(img, (int(a2), int(b2)), radius=5, color=255)
+    # a = np.cos(theta1)
+    # b = np.sin(theta1)
+    # x0 = a * rho1
+    # y0 = b * rho1
+    # pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
+    # pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
+    # cv2.line(img, pt1, pt2, 255, 1, cv2.LINE_AA)
+    # cv2.imshow('ellipse and line after', img)
+    #
+    # rho = _distance_line_point((-rho, theta), (-cx, -cy))
+    # img = np.zeros((600, 800), dtype=np.uint8)
+    # cv2.ellipse(img, ((int(center[0]), int(center[1])), (2 * r1, 2*r2), 0), 255, 1)
+    # cv2.circle(img, (int(center[0]), int(center[1])), radius=3, color=255)
+    # x1, x2 = x1 + cx, x2 + cx
+    # y1, y2 = y1 + cy, y2 + cy
+    # cv2.circle(img, (int(x1), int(y1)), radius=5, color=255)
+    # cv2.circle(img, (int(x2), int(y2)), radius=5, color=255)
+    # a = np.cos(theta)
+    # b = np.sin(theta)
+    # x0 = a * rho
+    # y0 = b * rho
+    # pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
+    # pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
+    # cv2.line(img, pt1, pt2, 255, 1, cv2.LINE_AA)
+    # cv2.imshow('ellipse and line unrotated after', img)
+
+    return p1, p2
 
 
 def _distance_line_point(line, point):
