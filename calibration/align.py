@@ -53,31 +53,6 @@ def white_balance(img):
     return result
 
 
-def align_with_reference_board(image, intermediate_image, intermediate_keypoints):
-    """
-    :param intermediate_keypoints:
-    :param image: undistorted image to be aligned
-    :param intermediate_image: undistorted reference image
-    :return:
-    """
-    # image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # intermediate_image = cv2.cvtColor(intermediate_image, cv2.COLOR_BGR2GRAY)
-    orb = cv2.ORB_create()
-
-    kp, desc = orb.detectAndCompute(image, None)
-    ref_kp, ref_desc = orb.detectAndCompute(intermediate_image, None)
-
-    matcher = cv2.BFMatcher(cv2.NORM_L1, crossCheck=False)
-    matches = matcher.match(desc, ref_desc)
-    matches = sorted(matches, key=lambda x: x.distance)[:20]
-    # homography = cv2.findHomography()
-    final_img = cv2.drawMatches(image, kp,
-                                intermediate_image, ref_kp, matches, None)
-    final_img = cv2.resize(final_img, (2000, 1000))
-    cv2.imshow('asdf', final_img)
-    cv2.waitKey()
-
-
 def load_reference_data():
     with open('../resources/pi0-distorted-sample.json') as json_file:
         ref_board = json.load(json_file)
@@ -104,14 +79,15 @@ def compute_reference_transformation(intermediate_keypoints):
     return transformation_matrix
 
 
-def align_binary_with_reference(red_green_mask, binary_reference_image, color_image):
-    corner_algo = lambda image: cv2.goodFeaturesToTrack(image, 25, 0.01, 10)
+def align_with_reference_board(image):
+    """
+    Aligns the given image of an empty dartboard with an ideal dartboard
+    :param image: image of dartboard with no darts on it
+    :return: homography matrix M
+    """
+    red_green_mask = extract_red_green_areas(image)
 
     contours, hier = cv2.findContours(red_green_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # cv2.drawContours(color_image, contours, -1, (0, 255, 0), 1)
-    # cv2.imshow('contours', color_image)
-    # cv2.waitKey()
 
     outer_ellipse_index = np.argmax(np.asarray([cv2.arcLength(c, False) for c in contours]))
     outer_ellipse_countour = contours[outer_ellipse_index]
@@ -122,45 +98,15 @@ def align_binary_with_reference(red_green_mask, binary_reference_image, color_im
 
     scoring_area_mask = cv2.ellipse(np.zeros_like(red_green_mask, dtype=np.uint8), (center, scaled_radii, rot), 255, -1)
 
-    # color_image = cv2.cvtColor(red_green_mask.copy(), cv2.COLOR_GRAY2BGR)
-
-    # cv2.ellipse(color_image, (center, radii, rot), (0, 0, 255), 1)
-
-    # cv2.imshow('Outer ellipse', scoring_area_mask)
-
-    scoring_area = cv2.bitwise_and(color_image, color_image, mask=scoring_area_mask)
+    scoring_area = cv2.bitwise_and(image, image, mask=scoring_area_mask)
     gray_scoring_area = cv2.cvtColor(scoring_area, cv2.COLOR_BGR2GRAY)
 
+    # find lines
     canny_edges = cv2.Canny(gray_scoring_area, 50, 200)
-    cv2.imshow('canny', canny_edges)
-
     lines = cv2.HoughLines(canny_edges, 1, np.pi / 360, 150)
 
-    # if lines is not None:
-    #     for i in range(0, min(len(lines), 50)):
-    #         rho = lines[i][0][0]
-    #         theta = lines[i][0][1]
-    #         a = np.cos(theta)
-    #         b = np.sin(theta)
-    #         x0 = a * rho
-    #         y0 = b * rho
-    #         pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
-    #         pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
-    #         cv2.line(scoring_area, pt1, pt2, (0, 0, 255), 1, cv2.LINE_AA)
-
+    # find ten strongest pairwise different lines
     lines = _local_non_maximum_suppression(lines, num_maxima=10)
-
-    # if lines is not None:
-    #     for i in range(0, min(len(lines), 20)):
-    #         rho = lines[i][0]
-    #         theta = lines[i][1]
-    #         a = np.cos(theta)
-    #         b = np.sin(theta)
-    #         x0 = a * rho
-    #         y0 = b * rho
-    #         pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
-    #         pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
-    #         cv2.line(scoring_area, pt1, pt2, (0, 0, 255), 1, cv2.LINE_AA)
 
     # normalize angles
     for i in range(len(lines)):
@@ -187,31 +133,34 @@ def align_binary_with_reference(red_green_mask, binary_reference_image, color_im
         outer_ellipse_intersections[i] = p1
         outer_ellipse_intersections[i + 10] = p2
 
-    for i, point in enumerate(outer_ellipse_intersections):
-        x, y = point[:2].astype(np.int)
-        cv2.circle(scoring_area, (x, y), 2, (0, 255, 0), -1)
-        # cv2.putText(scoring_area, f'{i}', (x + 2, y + 2), fontFace=cv2.FONT_HERSHEY_TRIPLEX, fontScale=1, color=(255, 255, 255))
-    cv2.imshow('scoring area', scoring_area)
+    # for i, point in enumerate(outer_ellipse_intersections):
+    #     x, y = point[:2].astype(np.int)
+    #     cv2.circle(scoring_area, (x, y), 2, (0, 255, 0), -1)
+    #     # cv2.putText(scoring_area, f'{i}', (x + 2, y + 2), fontFace=cv2.FONT_HERSHEY_TRIPLEX, fontScale=1, color=(255, 255, 255))
+    # cv2.imshow('scoring area', scoring_area)
 
     ideal_board = create_ideal_board()
-    reference_points = 200 * (ideal_board[5::6] + 1)
+    reference_points = ideal_board[5::6]
+    # reference_points = 200 * (ideal_board[5::6] + 1)
 
     M, mask = cv2.findHomography(outer_ellipse_intersections, reference_points, cv2.RANSAC, 5.0)
-    transformed = cv2.warpPerspective(scoring_area, M, (800, 600))
-    cv2.circle(transformed, (200, 200), radius=200, color=(255, 255, 128), thickness=1)
-    cv2.circle(transformed, (200, 200), radius=200 * 107 // 170, color=(255, 255, 128), thickness=1)
-    cv2.circle(transformed, (200, 200), radius=3, color=(0, 0, 255), thickness=-1)
-    cv2.imshow('transformed', transformed)
 
-    cv2.waitKey()
+    # transformed = cv2.warpPerspective(scoring_area, M, (800, 600))
+    # cv2.circle(transformed, (200, 200), radius=200, color=(255, 255, 128), thickness=1)
+    # cv2.circle(transformed, (200, 200), radius=200 * 107 // 170, color=(255, 255, 128), thickness=1)
+    # cv2.circle(transformed, (200, 200), radius=3, color=(0, 0, 255), thickness=-1)
+    # cv2.imshow('transformed', transformed)
+
+    # cv2.waitKey()
+    return M
 
 
 def compute_ellipse_line_intersection(ellipse, line):
     """
-
-    Expecte theta to be in [0, np.pi)
-    :param ellipse:
-    :param line:
+    Computes intersections of given ellipse with line, if there are any
+    Expects theta to be in [0, np.pi)
+    :param ellipse: (center, radii, rotation)
+    :param line: (rho, theta), i.e. Hough coordinates
     :return:
     """
     center, radii, rot = ellipse
@@ -327,6 +276,12 @@ def compute_ellipse_line_intersection(ellipse, line):
 
 
 def _distance_line_point(line, point):
+    """
+    Computes the smallest distance between the given line and point
+    :param line: (rho, theta), i.e. Hough coordinates
+    :param point: (x, y)
+    :return: distance
+    """
     rho, theta = line
     x, y = point
     # dist = | <w, x> + b |
@@ -334,7 +289,15 @@ def _distance_line_point(line, point):
 
 
 def _local_non_maximum_suppression(lines, num_maxima=10, rho_diff=10, angle_diff=3):
-    # assumes lines to be ordered by cofidence
+    """
+    Determines the strongest lines from a list of HoughLines (i.e. list ordered by confidence).
+    Suppresses local non-maxima by ensuring angle and position differences.
+    :param lines: list of HoughLines
+    :param num_maxima: number of lines to be returned
+    :param rho_diff: minimum rho difference
+    :param angle_diff: minimum angle difference
+    :return: the strongest lines
+    """
     if lines is None or len(lines) == 0:
         return
     nms_suppressed_lines = np.zeros((min(num_maxima, len(lines)), 2))
@@ -370,7 +333,5 @@ if __name__ == '__main__':
 
     cv2.imshow('orignal', image)
     # cv2.waitKey()
-    binary_image = extract_red_green_areas(image)
-    reference_binary = extract_red_green_areas(reference_image)
-    align_binary_with_reference(binary_image, reference_binary, image)
+    align_with_reference_board(image)
     # align_with_reference_board(binary_image, reference_binary, None)
