@@ -81,10 +81,15 @@ def compute_reference_transformation(intermediate_keypoints):
 
 def align_with_reference_board(image):
     """
-    Aligns the given image of an empty dartboard with an ideal dartboard
+    Aligns the given image of an empty dartboard with an ideal dartboard.
     :param image: image of dartboard with no darts on it
     :return: homography matrix M
     """
+    # resize image if necessary - parameters are currently tuned for 800x600
+    h, w = image.shape
+    if h != 600 or w != 800:
+        image = cv2.resize(image, (800, 600))
+
     red_green_mask = extract_red_green_areas(image)
 
     contours, hier = cv2.findContours(red_green_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
